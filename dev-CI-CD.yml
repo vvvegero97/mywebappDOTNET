@@ -1,0 +1,141 @@
+trigger:
+  branches:
+    include:
+    - dev
+pr:
+  branches:
+    exclude:
+    - "*"
+name: '$(GitVersion.FullSemVer)-Build-and-Deploy'
+variables:
+- name: sample
+  value: 'sample-py-manifest.yaml'
+- name: container_name
+  value: 'vegeroblob'
+- name: DHrepo
+  value: 'vvvegero97/pythonweb'
+- name: tag
+  value: '$(GitVersion.SemVer)-$(GitVersion.BranchName)'
+#############################################################################################
+###############################----------BUILD STAGE----------###############################
+#############################################################################################
+stages:
+- stage: Build
+  displayName: Build image
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+###############################----------GIT VERSION----------###############################
+    - task: gitversion/setup@0
+      inputs:
+        versionSpec: '5.x'
+    - task: gitversion/execute@0
+      displayName: Determine Version
+# ###############################--------DOCKER BUILD-PUSH--------###############################
+    - task: Docker@2
+      displayName: Build an image
+      inputs:
+        command: build
+        dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        tags: |
+          $(tag)
+    - task: Docker@2
+      displayName: Push to DockerHub
+      inputs:
+        containerRegistry: 'dockerhub'
+        repository: $(DHrepo)
+        command: 'buildAndPush'
+        Dockerfile: '**/Dockerfile'
+        tags: '$(tag)'
+##########################--------Artifacts for Deploy Stage--------##########################
+    - task: Bash@3
+      displayName: Add version artifact for Deploy Stage
+      inputs:
+        targetType: 'inline'
+        script: |
+          mkdir -p $(Pipeline.Workspace)/variables
+          echo $(tag) > $(Pipeline.Workspace)/variables/imagetag
+    - task: PublishBuildArtifacts@1
+      displayName: Publish manifest name for Deploy Stage
+      inputs:
+        PathtoPublish: '$(Pipeline.Workspace)/variables'
+        ArtifactName: 'imagetag'
+        publishLocation: 'Container'
+#############################################################################################
+###############################----------DEPLOY STAGE----------##############################
+#############################################################################################
+- stage: Deploy
+  dependsOn:
+  - Build
+  displayName: Deploy Image from Build to development AKS
+  jobs:
+  - job: Deploy
+    displayName: Deploy
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+###############################-----------KEY VAULT-----------###############################
+    - task: AzureKeyVault@2
+      displayName: Get secrets
+      inputs:
+        azureSubscription: 'AZURE SPN'
+        KeyVaultName: 'vegeroKeyVault'
+        SecretsFilter: 'storage-account-name, storage-account-key, storage-account-connection-string'
+        RunAsPreJob: false
+##############################-----------GET BUILD VAR-----------##############################
+    - task: DownloadBuildArtifacts@1
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        artifactName: 'imagetag'
+        downloadPath: '$(Pipeline.Workspace)/variables'
+    - task: Bash@3
+      displayName: Get the image tag variable for manifest
+      inputs:
+        targetType: 'inline'
+        script: |
+          build_tag=$(cat $(Pipeline.Workspace)/variables/imagetag/imagetag)
+          echo "##vso[task.setvariable variable=build_tag]$build_tag"
+    - task: Bash@3
+      displayName: Show image tag from build
+      inputs:
+        targetType: 'inline'
+        script: 'echo $(build_tag)'
+###############################----------SAMPLE YAML----------###############################
+    - task: AzureCLI@2
+      displayName: Copy sample manifest from blob storage
+      inputs:
+        azureSubscription: 'AZURE SPN'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          mkdir $(Pipeline.Workspace)/manifest
+               az storage blob download --account-name $(storage-account-name) --account-key $(storage-account-key) --container-name $(container_name) --file $(Pipeline.Workspace)/manifest/$(sample) --name $(sample)
+###############################----------CHANGE YAML----------###############################
+    - task: Bash@3
+      displayName: Change image in manifest file and rename file
+      inputs:
+        targetType: 'inline'
+        script: |
+          sed -i 's!vegerosample!$(DHrepo):$(build_tag)!'  ./$(sample)
+          echo 'File name: $(build_tag).yaml'
+          mv ./$(sample) $(build_tag).yaml
+          echo 'contents of new manifest:'
+          cat $(build_tag).yaml
+        workingDirectory: '$(Pipeline.Workspace)/manifest'
+###############################-----------DEPLOY NEW YAML-----------###############################
+    - task: Kubernetes@1
+      displayName: Deploy to K8S Cluster using downloaded manifest
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceEndpoint: 'myDEVcluster' 
+        namespace: 'default'
+        command: 'apply'
+        useConfigurationFile: true
+        configuration: '$(Pipeline.Workspace)/manifest/$(build_tag).yaml'
+        secretType: 'dockerRegistry'
+        containerRegistryType: 'Azure Container Registry'
+
