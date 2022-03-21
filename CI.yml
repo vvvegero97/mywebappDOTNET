@@ -1,8 +1,3 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger: none
 pr:
  branches:
@@ -12,7 +7,7 @@ pr:
 name: '$(GitVersion.FullSemVer)-Build'
 variables:
 - name: DHrepo
-  value: 'vvvegero97/pythonweb'
+  value: 'vvvegero97/dotnetweb'
 stages:
 #############################################################################################
 ###############################----------BUILD STAGE----------###############################
