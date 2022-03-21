@@ -9,11 +9,11 @@ pr:
 name: '$(GitVersion.FullSemVer)-Build-and-Deploy'
 variables:
 - name: sample
-  value: 'sample-py-manifest.yaml'
+  value: 'sample-dotnet-manifest.yaml'
 - name: container_name
   value: 'vegeroblob'
 - name: DHrepo
-  value: 'vvvegero97/pythonweb'
+  value: 'vvvegero97/dotnetweb'
 - name: tag
   value: '$(GitVersion.SemVer)-$(GitVersion.BranchName)'
 #############################################################################################
@@ -127,15 +127,15 @@ stages:
           cat $(build_tag).yaml
         workingDirectory: '$(Pipeline.Workspace)/manifest'
 ###############################-----------DEPLOY NEW YAML-----------###############################
-    - task: Kubernetes@1
-      displayName: Deploy to K8S Cluster using downloaded manifest
-      inputs:
-        connectionType: 'Kubernetes Service Connection'
-        kubernetesServiceEndpoint: 'myDEVcluster' 
-        namespace: 'default'
-        command: 'apply'
-        useConfigurationFile: true
-        configuration: '$(Pipeline.Workspace)/manifest/$(build_tag).yaml'
-        secretType: 'dockerRegistry'
-        containerRegistryType: 'Azure Container Registry'
+    # - task: Kubernetes@1
+    #   displayName: Deploy to K8S Cluster using downloaded manifest
+    #   inputs:
+    #     connectionType: 'Kubernetes Service Connection'
+    #     kubernetesServiceEndpoint: 'myDEVcluster' 
+    #     namespace: 'default'
+    #     command: 'apply'
+    #     useConfigurationFile: true
+    #     configuration: '$(Pipeline.Workspace)/manifest/$(build_tag).yaml'
+    #     secretType: 'dockerRegistry'
+    #     containerRegistryType: 'Azure Container Registry'
 
