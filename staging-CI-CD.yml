@@ -89,6 +89,7 @@ stages:
         targetType: 'inline'
         script: |
           sed -i 's!vegerosample!$(DHrepo):$(tag)!'  ./$(sample)
+          sed -i 's!dev.myapps.com!stag.myapps.com!' ./$(sample)
           echo 'File name: $(tag).yaml'
           mv ./$(sample) $(tag).yaml
           echo 'contents of new manifest:'
